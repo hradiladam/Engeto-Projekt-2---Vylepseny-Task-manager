@@ -21,7 +21,16 @@ def create_test_table():
     try:
         with connect_to_test_db() as connection:  # Pripoji se k testovaci databazi
             with connection.cursor() as cursor:
-                cursor.execute("CREATE TABLE IF NOT EXISTS ukoly LIKE spravce_ukolu.ukoly") # Vytvori testovaci ukoly
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS ukoly (
+                        id INT AUTO_INCREMENT PRIMARY KEY, 
+                        nazev VARCHAR(50) NOT NULL,
+                        popis TEXT NOT NULL,
+                        stav ENUM('nezahájeno', 'hotovo', 'probíhá') NOT NULL DEFAULT 'nezahájeno',
+                        datum_vytvoreni DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        CHECK (CHAR_LENGTH(TRIM(nazev)) > 0) 
+                    );
+                """)
                 connection.commit()
 
     except mysql.connector.Error as error:
@@ -34,7 +43,7 @@ def create_test_table():
 # Smaze testovaci databazi
 def drop_test_db():
     try:
-        with connect_to_mysql() as connection:     # Pripoji se k mysql
+        with connect_to_mysql() as connection: # Pripoji se k mysql
             with connection.cursor() as cursor:
                 cursor.execute("DROP DATABASE IF EXISTS testovaci_spravce_ukolu")
                 connection.commit()

@@ -4,11 +4,9 @@ from config import connect_to_db
 
 
 def create_table(connection):
-    if connection:
         try:
-            # vytvoreni tabulky, pokud neexistuje
-            cursor = connection.cursor()
-            sql = """
+            with connection.cursor() as cursor:
+                cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ukoly (
                     id INT AUTO_INCREMENT PRIMARY KEY, 
                     nazev VARCHAR(50) NOT NULL,
@@ -17,16 +15,12 @@ def create_table(connection):
                     datum_vytvoreni DATETIME DEFAULT CURRENT_TIMESTAMP,
                     CHECK (CHAR_LENGTH(TRIM(nazev)) > 0) 
                 );
-            """
-            cursor.execute(sql)
+            """)
             connection.commit()
         
         except Error as error:
             print(f"\n❌ Chyba při vytváření tabulky: {error}")
-        
-        finally:
-            cursor.close()
-
+            raise
 
 # Funkce pro vlozeni ukolu do databaze
 def pridat_ukol_db(connection, nazev, popis):

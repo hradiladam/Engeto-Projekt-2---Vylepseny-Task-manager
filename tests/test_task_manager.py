@@ -29,8 +29,8 @@ def db_cursor(db_connection):
 """TESTY"""
 
 
-# Test: ověří, že platný úkol je správně přidán do databáze
-def test_pridat_ukol_platny(db_connection, db_cursor):
+# Test: overi, ze platny ukol je spravne vlozen do db
+def test_pridat_ukol_db_platny(db_connection, db_cursor):
     nazev = "Testovací úkol"
     popis = "Popis testovacího úkolu"
 
@@ -42,58 +42,79 @@ def test_pridat_ukol_platny(db_connection, db_cursor):
     assert result == (nazev, popis)
 
 
-# Test: ověří, že pokus o vložení úkolu s NULL názvem selže na úrovni databáze
-def test_pridat_ukol_odmitne_null(db_connection, db_cursor): # db_cursor zajisti, ze tabulka existuje a pote je smazana
+# Test: overi, ze pokus o vlzoeni ukolu s NULL nazvem selze na urovni databaze
+def test_pridat_ukol_db_odmitne_null(db_connection, db_cursor): # db_cursor zajisti, ze tabulka existuje a pote je smazana
     nazev = None
     popis = "Testovaci popis"
 
+    # Zjisti pocet ukolu pred pokusem o pridani
+    db_cursor.execute("SELECT COUNT(*) FROM ukoly")
+    count_before = db_cursor.fetchone()[0]
+
+    # Ocekavame, ze bude vyhozena chyba kvuli NULL hodnote
     with pytest.raises(mysql.connector.Error):
         pridat_ukol_db(db_connection, nazev, popis)
+    
+    # Zjisti pocet ukolu po pokusu
+    db_cursor.execute("SELECT COUNT(*) FROM ukoly")
+    count_after = db_cursor.fetchone()[0]
+
+    # Overi, ze pocvet ukolu je stejny
+    assert count_before == count_after
 
 
-# Test: ověří, že databáze odmítne úkoly s prázdným názvem (i když Python validace je už ve vstupu)
+# Test: overi, ze db odmitne ukolu s prazdnym nazvem (i když Python validace je už ve vstupu)
 @pytest.mark.parametrize("invalid_nazev", ["", "   "])
 def test_pridat_ukol_db_odmitne_prazdny_nazev(db_connection, db_cursor, invalid_nazev):
     popis = "Testovací popis"
+
+    # Zjisti pocet ukolu pred pokusem
+    db_cursor.execute("SELECT COUNT(*) FROM ukoly")
+    count_before = db_cursor.fetchone()[0]
     
+    # Ocekavame, ze bude vyhozena chyba kvuli prazdnym hodnotam
     with pytest.raises(mysql.connector.Error):
         pridat_ukol_db(db_connection, invalid_nazev, popis)
 
+    # Zjisti pocet ukolu po pokusu
+    db_cursor.execute("SELECT COUNT(*) FROM ukoly")
+    count_after = db_cursor.fetchone()[0]
 
-# Test: ověří, že změna stavu úkolu na platnou hodnotu (probíhá / hotovo) proběhne korektně
+    # Overi, ze pocvet ukolu je stejny
+    assert count_before == count_after
+
+
+# Test: overi, ze zmena stavu ukolu na platnou hodnotu (probíhá / hotovo) probehne spravne
 @pytest.mark.parametrize("novy_stav", ["probíhá", "hotovo"])
 def test_aktualizovat_stav_db_platny_vstup(db_connection, db_cursor, novy_stav):
     nazev = "Testovací úkol pro aktualizaci"
     popis = "Popis úkolu"
     vychozi_stav = "nezahájeno"
 
-    # Přímé vložení testovacího úkolu do databáze
+    # Prime vlzoeni testovaciho ukolu do databaze
     db_cursor.execute(
         "INSERT INTO ukoly (nazev, popis, stav) VALUES (%s, %s, %s)",
         (nazev, popis, vychozi_stav)
     )
     db_connection.commit()
 
-    # Získání ID nově vloženého úkolu
+    # Ziskani ID nove vlozeneho ukolu
     db_cursor.execute("SELECT id FROM ukoly ORDER BY id DESC LIMIT 1")
     id_ukolu = db_cursor.fetchone()[0]
 
-    # Provedení aktualizace
-    aktualizace_ok = aktualizovat_ukol_db(db_connection, id_ukolu, novy_stav)
-    assert aktualizace_ok is True
+    # Provedeni aktualizace
+    aktualizace_okay = aktualizovat_ukol_db(db_connection, id_ukolu, novy_stav)
+    assert aktualizace_okay is True
 
-    # Ověření změny v databázi
+    # Ocereniu zmeny v databai
     db_cursor.execute("SELECT stav FROM ukoly WHERE id = %s", (id_ukolu,))
     stav_v_db = db_cursor.fetchone()[0]
     assert stav_v_db == novy_stav
 
-    db_cursor.close()
-
 
 # Test: overi, ze pokus o vlozeni neplatne hodnoty do sktualizace stavu vrati false
 def test_aktualizovat_stav_db_neplatny_stav(db_connection, db_cursor):
-    # Nejprve vložíme úkol, na kterém testujeme
-    # Vložíme úkol pomocí db_cursor
+    # Nejprve vloimme ukol, na kterem testujeme
     db_cursor.execute(
         "INSERT INTO ukoly (nazev, popis) VALUES (%s, %s)",
         ("Úkol pro test neplatného stavu", "Popis")
@@ -103,13 +124,20 @@ def test_aktualizovat_stav_db_neplatny_stav(db_connection, db_cursor):
     db_cursor.execute("SELECT id FROM ukoly ORDER BY id DESC LIMIT 1")
     id_ukolu = db_cursor.fetchone()[0]
 
-    # Zkusíme aktualizovat na neplatný stav
-    neplatny_stav = "čeká_na_schválení"
+    # Ziskame puvodni stav ukolu (default)
+    db_cursor.execute("SELECT stav FROM ukoly WHERE id = %s", (id_ukolu,))
+    state_before = db_cursor.fetchone()[0]
 
-    aktualizace_ok = aktualizovat_ukol_db(db_connection, id_ukolu, neplatny_stav)
-    assert aktualizace_ok is False
+    # Zkusime aktualizovat na neplatný stav
+    invalid_state = "čeká_na_schválení"
 
-    db_cursor.close()
+    aktualizace_okay = aktualizovat_ukol_db(db_connection, id_ukolu, invalid_state)
+    assert aktualizace_okay is False
+
+    # Overime, ze se stav nezmenil
+    db_cursor.execute("SELECT stav FROM ukoly WHERE id = %s", (id_ukolu,))
+    state_after = db_cursor.fetchone()[0]
+    assert state_before == state_after
 
 
 # Test, ktery overi smazani ukolu z databaze
@@ -122,14 +150,14 @@ def test_odstranit_ukol_db_platny_ukol(db_connection, db_cursor):
         )
     db_connection.commit()
 
-    db_cursor.execute(
-        "SELECT id FROM ukoly ORDER BY id DESC LIMIT 1"
-    )
+    db_cursor.execute("SELECT id FROM ukoly ORDER BY id DESC LIMIT 1")
     id_ukolu = db_cursor.fetchone()[0]
 
-    odstraneni_ok = odstranit_ukol_db(db_connection, id_ukolu)
-    assert odstraneni_ok is True
+    # Overime, ze pokus odstranit ukol probehne
+    odstraneni_okay = odstranit_ukol_db(db_connection, id_ukolu)
+    assert odstraneni_okay is True
 
+    # Overime, ze ukol byl odstranen
     db_cursor.execute("SELECT COUNT(*) FROM ukoly WHERE id = %s", (id_ukolu,))
     pocet = db_cursor.fetchone()[0]
     assert pocet == 0
@@ -139,7 +167,16 @@ def test_odstranit_ukol_db_platny_ukol(db_connection, db_cursor):
 def test_odstranit_ukol_db_neplatne_id(db_connection, db_cursor):
     neplatne_id = 999999  # Předpokládejme, že takové ID v DB není
 
-    odstraneni_ok = odstranit_ukol_db(db_connection, neplatne_id)
-    assert odstraneni_ok is False
+    db_cursor.execute("SELECT COUNT(*) FROM ukoly")
+    count_before = db_cursor.fetchone()[0]
 
+    # Pokusime se odstranit ukol s neplatnym ID, mame ocekavat False
+    odstraneni_okay = odstranit_ukol_db(db_connection, neplatne_id)
+    assert odstraneni_okay is False
+
+    db_cursor.execute("SELECT COUNT(*) FROM ukoly")
+    count_after = db_cursor.fetchone()[0]
+
+    # Overime, ze pocet ukolu je nezmenen (zadny ukol nebyl smazan)
+    assert count_before == count_after
 
